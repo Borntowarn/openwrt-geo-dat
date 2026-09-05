@@ -1,0 +1,63 @@
+name: Build filtered geo dat
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM: runetfreedom/russia-v2ray-rules-dat
+  GEOSITE_CATEGORIES: |
+    category-ads-all
+    youtube
+    openai
+    meta
+    tiktok
+    facebook
+    telegram
+    discord
+  GEOIP_CATEGORIES: |
+    ru
+    private
+    telegram
+    facebook
+    twitter
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build release
+        run: |
+          python build_release.py \
+            --upstream "$UPSTREAM" \
+            --geosite-categories "$GEOSITE_CATEGORIES" \
+            --geoip-categories "$GEOIP_CATEGORIES" \
+            --download-dir "$RUNNER_TEMP/upstream" \
+            --out-dir "$GITHUB_WORKSPACE/out"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="$(date -u +%Y%m%d%H%M)"
+          gh release create "$TAG" \
+            --title "Filtered geo $TAG" \
+            --notes "Filtered geosite/geoip from ${UPSTREAM}" \
+            out/release/geosite.dat \
+            out/release/geoip.dat \
+            out/release/geosite-txt.zip \
+            out/release/geoip-txt.zip \
+            out/release/geosite.dat.sha256sum \
+            out/release/geoip.dat.sha256sum

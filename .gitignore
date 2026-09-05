@@ -1,0 +1,9 @@
+.worktrees/
+.superpowers/
+docs/
+__pycache__/
+*.dat
+out/
+.tmp/
+*.zip
+.DS_Store
