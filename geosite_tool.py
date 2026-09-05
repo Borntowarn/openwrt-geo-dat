@@ -322,31 +322,86 @@ def list_categories(input_path: pathlib.Path) -> None:
         print(f"{site.name}\t{len(site.domains)}")
 
 
+
+def domain_entry_key(entry: DomainEntry) -> tuple:
+    return (entry.match_type, entry.value, tuple(entry.attrs))
+
+
+def find_category(sites: list[GeoSite], category: str) -> GeoSite | None:
+    wanted = normalize_name(category)
+    for site in sites:
+        if normalize_name(site.name) == wanted:
+            return site
+    return None
+
+
+def merge_category_sites(name: str, parts: list[GeoSite]) -> GeoSite:
+    """Union domain rules from several GeoSite parts into one category."""
+    seen: set[tuple] = set()
+    domains: list[DomainEntry] = []
+    for part in parts:
+        for entry in part.domains:
+            key = domain_entry_key(entry)
+            if key in seen:
+                continue
+            seen.add(key)
+            domains.append(entry)
+    return GeoSite(name=name, domains=domains)
+
 def filter_geosite(
     input_path: pathlib.Path,
     output_dat: pathlib.Path,
     output_txt_dir: pathlib.Path,
     categories: list[str],
+    category_merges: dict[str, list[pathlib.Path]] | None = None,
 ) -> None:
+    """Filter categories from input_path.
+
+    category_merges maps category name -> list of extra geosite.dat paths.
+    For those categories, domain rules are union-merged with the primary file.
+    """
     cleaned = parse_categories_arg(categories)
     if not cleaned:
         raise SystemExit("Error: category list is empty; refuse to build all categories")
 
     sites = parse_geosite_file(input_path)
     available: dict[str, GeoSite] = {normalize_name(s.name): s for s in sites}
+    merges = {normalize_name(k): v for k, v in (category_merges or {}).items()}
 
     missing = [cat for cat in cleaned if normalize_name(cat) not in available]
     if missing:
         missing_str = ", ".join(missing)
         raise SystemExit(f"Error: categories not found in {input_path.name}: {missing_str}")
 
-    seen = set()
+    seen: set[str] = set()
     filtered: list[GeoSite] = []
     for cat in cleaned:
         norm = normalize_name(cat)
-        if norm not in seen:
-            seen.add(norm)
-            filtered.append(available[norm])
+        if norm in seen:
+            continue
+        seen.add(norm)
+        primary = available[norm]
+        extra_paths = merges.get(norm, [])
+        if not extra_paths:
+            filtered.append(primary)
+            continue
+
+        parts = [primary]
+        for extra_path in extra_paths:
+            extra_sites = parse_geosite_file(extra_path)
+            extra = find_category(extra_sites, cat)
+            if extra is None:
+                raise SystemExit(
+                    f"Error: category {cat!r} not found in merge source {extra_path}"
+                )
+            parts.append(extra)
+            print(
+                f"Merging {cat}: +{len(extra.domains)} rules from {extra_path.name} "
+                f"(primary had {len(primary.domains)})"
+            )
+        merged = merge_category_sites(primary.name, parts)
+        print(f"Merged {cat}: {len(merged.domains)} unique rules")
+        filtered.append(merged)
 
     output_dat.parent.mkdir(parents=True, exist_ok=True)
     output_dat.write_bytes(build_geosite_file(filtered))

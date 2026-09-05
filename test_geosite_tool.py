@@ -260,5 +260,66 @@ class GeositeToolCliTests(unittest.TestCase):
             self.assertNotEqual(res.returncode, 0)
 
 
+
+    def test_merge_category_sites(self) -> None:
+        a = geosite_tool.GeoSite(
+            name="CATEGORY-ADS-ALL",
+            domains=[
+                geosite_tool.DomainEntry(2, "a.example.com", []),
+                geosite_tool.DomainEntry(2, "shared.example.com", []),
+            ],
+        )
+        b = geosite_tool.GeoSite(
+            name="CATEGORY-ADS-ALL",
+            domains=[
+                geosite_tool.DomainEntry(2, "shared.example.com", []),
+                geosite_tool.DomainEntry(3, "b.example.com", []),
+            ],
+        )
+        merged = geosite_tool.merge_category_sites("CATEGORY-ADS-ALL", [a, b])
+        values = sorted((e.match_type, e.value) for e in merged.domains)
+        self.assertEqual(
+            values,
+            [
+                (2, "a.example.com"),
+                (2, "shared.example.com"),
+                (3, "b.example.com"),
+            ],
+        )
+
+    def test_filter_with_category_merges(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = pathlib.Path(tmp)
+            primary_dir = tmp_path / "primary"
+            extra_dir = tmp_path / "extra"
+            primary_dir.mkdir()
+            extra_dir.mkdir()
+            (primary_dir / "category-ads-all.txt").write_text(
+                "primary.example.com\nshared.example.com\n", encoding="utf-8"
+            )
+            (primary_dir / "youtube.txt").write_text("youtube.com\n", encoding="utf-8")
+            (extra_dir / "category-ads-all.txt").write_text(
+                "shared.example.com\nextra.example.com\n", encoding="utf-8"
+            )
+            primary_dat = tmp_path / "primary.dat"
+            extra_dat = tmp_path / "extra.dat"
+            geosite_tool.build_from_directory(primary_dir, primary_dat)
+            geosite_tool.build_from_directory(extra_dir, extra_dat)
+            out_dat = tmp_path / "out.dat"
+            out_txt = tmp_path / "out-txt"
+            geosite_tool.filter_geosite(
+                primary_dat,
+                out_dat,
+                out_txt,
+                ["category-ads-all", "youtube"],
+                category_merges={"category-ads-all": [extra_dat]},
+            )
+            ads = (out_txt / "category-ads-all.txt").read_text(encoding="utf-8")
+            self.assertIn("primary.example.com", ads)
+            self.assertIn("extra.example.com", ads)
+            self.assertEqual(ads.count("shared.example.com"), 1)
+            self.assertTrue((out_txt / "youtube.txt").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

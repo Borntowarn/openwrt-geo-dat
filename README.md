@@ -13,6 +13,9 @@
 
 ## Категории
 
+`category-ads-all` дополнительно объединяется с [Yularzhi/geosite_russia](https://github.com/Yularzhi/geosite_russia) (`ADS_MERGE_URL` / `ADS_MERGE_CATEGORY` в workflow).
+
+
 Список задаётся в `.github/workflows/build.yml` (`env`), по одной категории на строку:
 
 ```yaml

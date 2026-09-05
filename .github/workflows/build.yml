@@ -10,6 +10,8 @@ permissions:
 
 env:
   UPSTREAM: runetfreedom/russia-v2ray-rules-dat
+  ADS_MERGE_URL: https://raw.githubusercontent.com/yularzhi/geosite_russia/release/geosite.dat
+  ADS_MERGE_CATEGORY: category-ads-all
   GEOSITE_CATEGORIES: |
     category-ads-all
     youtube
@@ -42,6 +44,8 @@ jobs:
         run: |
           python build_release.py \
             --upstream "$UPSTREAM" \
+            --ads-merge-url "$ADS_MERGE_URL" \
+            --ads-merge-category "$ADS_MERGE_CATEGORY" \
             --geosite-categories "$GEOSITE_CATEGORIES" \
             --geoip-categories "$GEOIP_CATEGORIES" \
             --download-dir "$RUNNER_TEMP/upstream" \

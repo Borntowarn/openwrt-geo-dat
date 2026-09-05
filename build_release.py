@@ -96,6 +96,36 @@ def download_upstream(
     return geosite_dat, geoip_dat
 
 
+
+def download_url_file(url: str, dest: pathlib.Path, skip_download: bool = False) -> pathlib.Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if skip_download and dest.exists():
+        print(f"Using existing {dest.name}")
+        return dest
+    print(f"Downloading {url} -> {dest}...")
+    download_file(url, dest)
+    return dest
+
+
+def download_optional_sha256(url: str, file_path: pathlib.Path, skip_download: bool = False) -> None:
+    """Verify checksum if a sibling .sha256 / .sha256sum URL is available."""
+    for sum_url in (url + ".sha256sum", url + ".sha256"):
+        local_sum = pathlib.Path(str(file_path) + ".sha256sum")
+        try:
+            if not (skip_download and local_sum.exists()):
+                download_file(sum_url, local_sum)
+            verify_sha256(file_path, local_sum)
+            print(f"Verified checksum via {sum_url}")
+            return
+        except Exception as exc:
+            print(f"Checksum skip/fail for {sum_url}: {exc}")
+            if local_sum.exists() and not skip_download:
+                try:
+                    local_sum.unlink()
+                except OSError:
+                    pass
+    print(f"Warning: no checksum verified for {file_path.name}")
+
 def create_zip(source_dir: pathlib.Path, zip_path: pathlib.Path, prefix: str) -> None:
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -179,6 +209,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip downloading if assets already exist in download-dir and match checksums",
     )
+    parser.add_argument(
+        "--ads-merge-url",
+        default=os.environ.get(
+            "ADS_MERGE_URL",
+            "https://raw.githubusercontent.com/yularzhi/geosite_russia/release/geosite.dat",
+        ),
+        help="Extra geosite.dat URL to merge into ads category (default: geosite_russia release)",
+    )
+    parser.add_argument(
+        "--ads-merge-category",
+        default=os.environ.get("ADS_MERGE_CATEGORY", "category-ads-all"),
+        help="Category name to merge from ads-merge-url (default: category-ads-all)",
+    )
+    parser.add_argument(
+        "--no-ads-merge",
+        action="store_true",
+        help="Disable merging ads category from ADS_MERGE_URL",
+    )
     return parser.parse_args(argv)
 
 
@@ -201,6 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  GeoIP categories:   {', '.join(geoip_cats)}")
     print(f"  Download dir:       {args.download_dir}")
     print(f"  Output dir:         {args.out_dir}")
+    if not args.no_ads_merge and (args.ads_merge_url or "").strip():
+        print(f"  Ads merge URL:      {args.ads_merge_url}")
+        print(f"  Ads merge category: {args.ads_merge_category}")
 
     up_geosite, up_geoip = download_upstream(
         upstream=args.upstream,
@@ -208,12 +259,31 @@ def main(argv: list[str] | None = None) -> int:
         skip_download=args.skip_download,
     )
 
+    category_merges: dict[str, list[pathlib.Path]] = {}
+    ads_cat = (args.ads_merge_category or "").strip()
+    ads_url = (args.ads_merge_url or "").strip()
+    if (
+        not args.no_ads_merge
+        and ads_url
+        and ads_cat
+        and any(geosite_tool.normalize_name(c) == geosite_tool.normalize_name(ads_cat) for c in geosite_cats)
+    ):
+        merge_dat = download_url_file(
+            ads_url,
+            args.download_dir / "merge" / "geosite_russia.dat",
+            skip_download=args.skip_download,
+        )
+        download_optional_sha256(ads_url, merge_dat, skip_download=args.skip_download)
+        category_merges[ads_cat] = [merge_dat]
+        print(f"Ads merge enabled: {ads_cat} += {ads_url}")
+
     print("\nFiltering GeoSite...")
     geosite_tool.filter_geosite(
         input_path=up_geosite,
         output_dat=args.out_dir / "geosite.dat",
         output_txt_dir=args.out_dir / "geosite-txt",
         categories=geosite_cats,
+        category_merges=category_merges or None,
     )
 
     print("\nFiltering GeoIP...")
