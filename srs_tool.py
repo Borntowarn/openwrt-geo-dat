@@ -166,15 +166,16 @@ def build_srs_from_dat(
     json_paths = write_ruleset_json(site_map, json_dir / "geosite", "geosite-")
     json_paths.extend(write_ruleset_json(ip_map, json_dir / "geoip", "geoip-"))
 
+    if not require_compile:
+        print("Skipping .srs compile; wrote JSON sources only")
+        return json_paths, []
+
     binary = find_sing_box(sing_box)
     if not binary:
-        if require_compile:
-            raise SystemExit(
-                "sing-box binary not found; install it or pass --sing-box / path, "
-                "or use --skip-srs-compile"
-            )
-        print("sing-box not found; wrote JSON sources only")
-        return json_paths, []
+        raise SystemExit(
+            "sing-box binary not found; install it or pass --sing-box / path, "
+            "or use --skip-srs-compile"
+        )
 
     if srs_dir.exists():
         shutil.rmtree(srs_dir)
