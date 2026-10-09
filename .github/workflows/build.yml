@@ -12,6 +12,7 @@ env:
   UPSTREAM: runetfreedom/russia-v2ray-rules-dat
   ADS_MERGE_URL: https://raw.githubusercontent.com/yularzhi/geosite_russia/release/geosite.dat
   ADS_MERGE_CATEGORY: category-ads-all
+  SING_BOX_VERSION: "1.13.21"
   GEOSITE_CATEGORIES: |
     category-ads-all
     youtube
@@ -40,6 +41,23 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install sing-box
+        run: |
+          set -euo pipefail
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            x86_64) SB_ARCH=amd64 ;;
+            aarch64|arm64) SB_ARCH=arm64 ;;
+            *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+          esac
+          URL="https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-${SB_ARCH}.tar.gz"
+          curl -fsSL "$URL" | tar -xz -C "$RUNNER_TEMP"
+          install -m 0755 "$RUNNER_TEMP/sing-box-${SING_BOX_VERSION}-linux-${SB_ARCH}/sing-box" /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Run unit tests
+        run: python -m unittest discover -s . -p "test_*.py"
+
       - name: Build release
         run: |
           python build_release.py \
@@ -49,19 +67,24 @@ jobs:
             --geosite-categories "$GEOSITE_CATEGORIES" \
             --geoip-categories "$GEOIP_CATEGORIES" \
             --download-dir "$RUNNER_TEMP/upstream" \
-            --out-dir "$GITHUB_WORKSPACE/out"
+            --out-dir "$GITHUB_WORKSPACE/out" \
+            --sing-box sing-box
 
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="$(date -u +%Y%m%d%H%M)"
+          mapfile -t SRS_FILES < <(find out/release -maxdepth 1 -type f -name '*.srs' | sort)
           gh release create "$TAG" \
             --title "Filtered geo $TAG" \
-            --notes "Filtered geosite/geoip from ${UPSTREAM}" \
+            --notes "Filtered geosite/geoip (+ sing-box .srs) from ${UPSTREAM}" \
             out/release/geosite.dat \
             out/release/geoip.dat \
             out/release/geosite-txt.zip \
             out/release/geoip-txt.zip \
+            out/release/sing-box-srs.zip \
             out/release/geosite.dat.sha256sum \
-            out/release/geoip.dat.sha256sum
+            out/release/geoip.dat.sha256sum \
+            out/release/sing-box-srs.zip.sha256sum \
+            "${SRS_FILES[@]}"

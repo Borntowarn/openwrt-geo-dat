@@ -11,6 +11,7 @@ import zipfile
 
 import geoip_tool
 import geosite_tool
+import srs_tool
 
 
 def parse_categories(val: str | list[str] | None) -> list[str]:
@@ -126,16 +127,22 @@ def download_optional_sha256(url: str, file_path: pathlib.Path, skip_download: b
                     pass
     print(f"Warning: no checksum verified for {file_path.name}")
 
-def create_zip(source_dir: pathlib.Path, zip_path: pathlib.Path, prefix: str) -> None:
+def create_zip(source_dir: pathlib.Path, zip_path: pathlib.Path, prefix: str, pattern: str = "*.txt") -> None:
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source_dir.rglob("*.txt")):
+        for file in sorted(source_dir.rglob(pattern)):
             if file.is_file():
-                arcname = f"{prefix}/{file.name}"
+                arcname = f"{prefix}/{file.name}" if prefix else file.name
                 zf.write(file, arcname=arcname)
 
 
-def package_release(out_dir: pathlib.Path) -> pathlib.Path:
+def package_release(
+    out_dir: pathlib.Path,
+    *,
+    skip_srs: bool = False,
+    skip_srs_compile: bool = False,
+    sing_box: str | None = None,
+) -> pathlib.Path:
     rel_dir = out_dir / "release"
     rel_dir.mkdir(parents=True, exist_ok=True)
 
@@ -166,6 +173,28 @@ def package_release(out_dir: pathlib.Path) -> pathlib.Path:
 
     (rel_dir / "geosite.dat.sha256sum").write_text(f"{geosite_hash}  geosite.dat\n", encoding="utf-8")
     (rel_dir / "geoip.dat.sha256sum").write_text(f"{geoip_hash}  geoip.dat\n", encoding="utf-8")
+
+    if not skip_srs:
+        print("\nBuilding sing-box rule-sets (.srs)...")
+        json_dir = out_dir / "srs-json"
+        srs_dir = out_dir / "srs"
+        _, srs_paths = srs_tool.build_srs_from_dat(
+            geosite_dat=geosite_dat,
+            geoip_dat=geoip_dat,
+            json_dir=json_dir,
+            srs_dir=srs_dir,
+            sing_box=sing_box,
+            require_compile=not skip_srs_compile,
+        )
+        if srs_paths:
+            for srs_path in srs_paths:
+                shutil.copyfile(srs_path, rel_dir / srs_path.name)
+            create_zip(srs_dir, rel_dir / "sing-box-srs.zip", "", "*.srs")
+            srs_zip_hash = calc_sha256(rel_dir / "sing-box-srs.zip")
+            (rel_dir / "sing-box-srs.zip.sha256sum").write_text(
+                f"{srs_zip_hash}  sing-box-srs.zip\n",
+                encoding="utf-8",
+            )
 
     print(f"\nRelease package generated in {rel_dir}:")
     for item in sorted(rel_dir.iterdir()):
@@ -226,6 +255,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-ads-merge",
         action="store_true",
         help="Disable merging ads category from ADS_MERGE_URL",
+    )
+    parser.add_argument(
+        "--skip-srs",
+        action="store_true",
+        help="Do not build sing-box JSON/.srs artifacts",
+    )
+    parser.add_argument(
+        "--skip-srs-compile",
+        action="store_true",
+        help="Write rule-set JSON only; skip sing-box rule-set compile",
+    )
+    parser.add_argument(
+        "--sing-box",
+        default=os.environ.get("SING_BOX", "sing-box"),
+        help="sing-box binary for rule-set compile (default: env SING_BOX or sing-box)",
     )
     return parser.parse_args(argv)
 
@@ -295,7 +339,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print("\nPackaging release...")
-    package_release(args.out_dir)
+    package_release(
+        args.out_dir,
+        skip_srs=args.skip_srs,
+        skip_srs_compile=args.skip_srs_compile,
+        sing_box=args.sing_box,
+    )
     print("\nBuild completed successfully.")
     return 0
 

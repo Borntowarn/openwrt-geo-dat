@@ -100,6 +100,7 @@ class BuildReleaseTests(unittest.TestCase):
                     "--out-dir",
                     str(out_dir),
                     "--skip-download",
+                    "--skip-srs-compile",
                 ]
             )
             self.assertEqual(rc, 0)
