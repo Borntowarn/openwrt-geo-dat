@@ -22,6 +22,9 @@ env:
     facebook
     telegram
     discord
+    FLIBUSTA
+    INSTAGRAM
+
   GEOIP_CATEGORIES: |
     ru
     private
