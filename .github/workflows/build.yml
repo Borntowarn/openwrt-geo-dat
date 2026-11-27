@@ -27,6 +27,7 @@ env:
     discord
     FLIBUSTA
     INSTAGRAM
+    cn
 
   GEOIP_CATEGORIES: |
     ru
@@ -34,6 +35,7 @@ env:
     telegram
     facebook
     twitter
+    cn
 
 jobs:
   build:
