@@ -17,6 +17,9 @@ env:
     category-ads-all
     youtube
     openai
+    google-gemini
+    anthropic
+    category-ai-!cn
     meta
     tiktok
     facebook
