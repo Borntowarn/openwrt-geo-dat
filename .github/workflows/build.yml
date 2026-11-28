@@ -27,6 +27,11 @@ env:
     discord
     FLIBUSTA
     INSTAGRAM
+    category-ru
+    ru-available-only-inside
+    steam
+    category-game-platforms-download
+    category-doh
     cn
 
   GEOIP_CATEGORIES: |
